@@ -1,113 +1,168 @@
-// app/manga-list/page.tsx
-"use client";
-
-import React, { useState } from 'react';
-import Link from 'next/link';
+// app/manga/[slug]/[chapterNumber]/page.tsx
+import React from 'react';
 import Image from 'next/image';
-import { Search, ListFilter, SortAsc, BookOpen, Clock, BarChart, ChevronDown, CheckCircle } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, ArrowRight, Home, List, ChevronDown } from 'lucide-react';
 
-// بيانات وهمية لقائمة المانجا
-const MOCK_MANGA_LIST = [
-    { id: 1, title: 'سولو ليفلينج', slug: 'solo-leveling', cover: '/images/covers/solo-leveling.jpg', latest_chapter: 201, status: 'مكتمل', type: 'مانهوا', views: 4500000, genres: ['أكشن', 'خيال'] },
-    { id: 2, title: 'ون بيس', slug: 'one-piece', cover: '/images/covers/one-piece.jpg', latest_chapter: 1100, status: 'مستمر', type: 'مانجا', views: 3200000, genres: ['مغامرات', 'أكشن'] },
-    { id: 3, title: 'هجوم العمالقة', slug: 'aot', cover: '/images/covers/aot.jpg', latest_chapter: 139, status: 'مكتمل', type: 'مانجا', views: 5100000, genres: ['دراما', 'أكشن'] },
-    { id: 4, title: 'برج الإله', slug: 'tower-of-god', cover: '/images/covers/tower-of-god.jpg', latest_chapter: 570, status: 'مستمر', type: 'مانهوا', views: 2800000, genres: ['خيال', 'مغامرات'] },
-    { id: 5, title: 'قاتل الشياطين', slug: 'demon-slayer', cover: '/images/covers/demon-slayer.jpg', latest_chapter: 205, status: 'مكتمل', type: 'مانجا', views: 4000000, genres: ['أكشن', 'خيال'] },
-    { id: 6, title: 'المشعوذة', slug: 'witch-hat', cover: '/images/covers/witch-hat.jpg', latest_chapter: 55, status: 'مستمر', type: 'مانجا', views: 1500000, genres: ['خيال', 'دراما'] },
-    // تكرار البيانات الوهمية لعرض المزيد من العناصر
-    ...Array(10).fill(MOCK_MANGA_LIST[1]).map((m, i) => ({...m, id: 10 + i, title: `ون بيس - وهمي ${i+1}`})),
-];
+// تعريف واجهة البيانات التي يتوقعها المكون
+interface ChapterData {
+    mangaTitle: string;
+    chapterNumber: number;
+    chapterTitle: string;
+    pages: string[]; // قائمة بروابط صور الصفحات
+    navigation: {
+        prevChapter: number | null;
+        nextChapter: number | null;
+    };
+}
 
-const GENRES = ['أكشن', 'مغامرات', 'دراما', 'رومانسي', 'خيال', 'إيسيكاي', 'كوميدي', 'غموض'];
+// ----------------------------------------------------
+// 1. دالة جلب البيانات (تنفذ على الخادم)
+// ----------------------------------------------------
+async function fetchChapterContent(slug: string, chapterNumber: string): Promise<ChapterData | null> {
+    const API_URL = process.g.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    
+    try {
+        // الاتصال بنقطة الوصول: /api/manga/[slug]/[chapterNumber]
+        const response = await fetch(`${API_URL}/api/manga/${slug}/${chapterNumber}`, { 
+            cache: 'no-store' 
+        });
 
-// المكون الفرعي لبطاقة المانجا في القائمة
-const MangaCard = ({ manga }: { manga: typeof MOCK_MANGA_LIST[0] }) => (
-    <Link href={`/manga/${manga.slug}`} className="flex gap-4 p-4 bg-[#292c35] rounded-xl hover:bg-[#343743] transition-colors shadow-lg group">
+        if (!response.ok) {
+            if (response.status === 404) return null;
+            throw new Error('فشل جلب محتوى الفصل من الـ API');
+        }
+
+        const data = await response.json();
+        return data.data || null;
         
-        {/* الغلاف */}
-        <div className="relative w-20 h-28 flex-shrink-0 rounded-lg overflow-hidden">
-            <Image src={manga.cover} alt={manga.title} fill className="object-cover" />
-        </div>
+    } catch (error) {
+        console.error(`Error fetching chapter ${chapterNumber} for ${slug}:`, error);
+        return null; 
+    }
+}
 
-        {/* التفاصيل */}
-        <div className="flex-grow">
-            <h3 className="text-xl font-bold text-yellow-400 group-hover:text-yellow-300 transition-colors">{manga.title}</h3>
+
+// ----------------------------------------------------
+// 2. شريط التنقل (Navigation Bar)
+// ----------------------------------------------------
+interface ReaderNavProps {
+    mangaSlug: string;
+    data: ChapterData;
+}
+
+const ReaderNavigationBar: React.FC<ReaderNavProps> = ({ mangaSlug, data }) => (
+    <div className="sticky top-0 z-10 bg-[#1a1c23] border-b border-gray-700 py-3 shadow-md" dir="rtl">
+        <div className="container mx-auto px-4 flex justify-between items-center max-w-4xl">
             
-            {/* الأيقونات والمعلومات */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1 text-sm text-gray-400">
-                <p className="flex items-center gap-1"><BookOpen className="w-4 h-4" /> نوع العمل: <span className="text-white">{manga.type}</span></p>
-                <p className="flex items-center gap-1"><CheckCircle className="w-4 h-4 text-green-400" /> الحالة: <span className="text-white">{manga.status}</span></p>
-                <p className="flex items-center gap-1"><BarChart className="w-4 h-4 text-red-400" /> المشاهدات: <span className="text-white">{(manga.views / 1000000).toFixed(1)}M</span></p>
-                <p className="flex items-center gap-1"><Clock className="w-4 h-4" /> آخر فصل: <span className="text-white">{manga.latest_chapter}</span></p>
+            {/* 1. زر الفصل السابق */}
+            <Link 
+                href={data.navigation.prevChapter ? `/manga/${mangaSlug}/${data.navigation.prevChapter}` : '#'}
+                className={`flex items-center gap-1 px-3 py-1 rounded transition-colors text-sm ${
+                    data.navigation.prevChapter 
+                        ? 'bg-yellow-500 text-black hover:bg-yellow-600'
+                        : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                }`}
+            >
+                <ArrowRight className="w-4 h-4" />
+                السابق
+            </Link>
+
+            {/* 2. معلومات الفصل */}
+            <div className="text-white text-center flex-1 mx-4">
+                <p className="text-base font-bold text-yellow-400 truncate">{data.mangaTitle}</p>
+                <p className="text-sm font-light text-gray-400 truncate">فصل {data.chapterNumber} {data.chapterTitle && `- ${data.chapterTitle}`}</p>
             </div>
             
-            {/* التصنيفات */}
-            <div className="flex flex-wrap gap-1 mt-2">
-                {manga.genres.slice(0, 3).map(genre => (
-                    <span key={genre} className="px-2 py-0.5 bg-gray-700 text-xs text-gray-300 rounded-full">{genre}</span>
-                ))}
-            </div>
+            {/* 3. زر الفصل التالي */}
+            <Link 
+                href={data.navigation.nextChapter ? `/manga/${mangaSlug}/${data.navigation.nextChapter}` : '#'}
+                className={`flex items-center gap-1 px-3 py-1 rounded transition-colors text-sm ${
+                    data.navigation.nextChapter 
+                        ? 'bg-yellow-500 text-black hover:bg-yellow-600'
+                        : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                }`}
+            >
+                التالي
+                <ArrowLeft className="w-4 h-4" />
+            </Link>
+            
+            {/* 4. قائمة الفصول */}
+            <Link 
+                href={`/manga/${mangaSlug}`}
+                title="العودة لصفحة التفاصيل"
+                className="hidden sm:flex items-center ml-4 p-2 rounded bg-gray-600 text-white hover:bg-gray-500 transition-colors"
+            >
+                <List className="w-5 h-5" />
+            </Link>
         </div>
-    </Link>
+    </div>
 );
 
 
-export default function MangaListPage() {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedGenre, setSelectedGenre] = useState('');
-    const [selectedType, setSelectedType] = useState('');
-    const [sortBy, setSortBy] = useState('views'); // الافتراضي: حسب المشاهدات
+// ----------------------------------------------------
+// 3. المكون الرئيسي لصفحة القارئ (Server Component)
+// ----------------------------------------------------
+export default async function ChapterReaderPage({ params }: { params: { slug: string, chapterNumber: string } }) {
+    const mangaSlug = params.slug;
+    const chapterNumber = params.chapterNumber;
+    
+    const chapterData = await fetchChapterContent(mangaSlug, chapterNumber);
 
-    // 1. التصفية (Filtering)
-    const filteredList = MOCK_MANGA_LIST.filter(manga => {
-        const matchesSearch = manga.title.includes(searchTerm);
-        const matchesGenre = selectedGenre ? manga.genres.includes(selectedGenre) : true;
-        const matchesType = selectedType ? manga.type === selectedType : true;
-        return matchesSearch && matchesGenre && matchesType;
-    });
+    // إذا لم يتم العثور على الفصل أو المانجا
+    if (!chapterData) {
+        return (
+            <div className="min-h-screen bg-[#1a1c23] flex items-center justify-center p-8" dir="rtl">
+                <div className="text-center bg-[#292c35] p-10 rounded-xl shadow-2xl text-white">
+                    <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+                    <h1 className="text-2xl font-bold mb-2">عذراً، لم يتم العثور على الفصل</h1>
+                    <p className="text-gray-400">الفصل **{chapterNumber}** للعمل **{mangaSlug}** غير موجود.</p>
+                    <Link href="/manga-list" className="mt-6 inline-block text-yellow-500 hover:underline">
+                        العودة إلى قائمة الأعمال
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
-    // 2. الفرز (Sorting)
-    const sortedList = filteredList.sort((a, b) => {
-        if (sortBy === 'latest_chapter') {
-            return b.latest_chapter - a.latest_chapter; // الأحدث أولاً
-        } else if (sortBy === 'views') {
-            return b.views - a.views; // الأكثر مشاهدة أولاً
-        }
-        return 0;
-    });
 
     return (
-        <div className="min-h-screen bg-[#1a1c23] text-white py-8" dir="rtl">
-            <div className="container mx-auto px-4 max-w-6xl">
-                
-                <h1 className="text-3xl font-bold text-white mb-6 flex items-center gap-2">
-                    <ListFilter className="w-7 h-7 text-yellow-400" />
-                    قائمة تصفح المانجا والمانهوا
-                </h1>
+        <div className="min-h-screen bg-[#111111]" dir="rtl">
+            
+            {/* شريط التنقل العلوي */}
+            <ReaderNavigationBar mangaSlug={mangaSlug} data={chapterData} />
 
-                {/* --- شريط البحث والفلترة --- */}
-                <div className="bg-[#292c35] p-6 rounded-xl shadow-xl mb-8">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        
-                        {/* 1. خانة البحث */}
-                        <div className="md:col-span-2 relative">
-                            <input
-                                type="text"
-                                placeholder="اكتب اسم المانجا للبحث..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full py-2 pr-10 pl-4 bg-[#1a1c23] border border-gray-600 rounded-lg focus:ring-yellow-400 focus:border-yellow-400 text-white"
-                            />
-                            <Search className="absolute right-3 top-3 w-5 h-5 text-gray-400" />
-                        </div>
-                        
-                        {/* 2. تصفية حسب النوع */}
-                        <div className="relative">
-                            <select
-                                value={selectedType}
-                                onChange={(e) => setSelectedType(e.target.value)}
-                                className="w-full py-2 px-3 bg-[#1a1c23] border border-gray-600 rounded-lg focus:ring-yellow-400 focus:border-yellow-400 text-white appearance-none"
-                            >
-                                <option value="">كل الأنواع</option>
-                                <option value="مانهوا">مانهوا (Webtoon)</option>
-                                <option value="مانجا">مانجا (M
+            {/* محتوى الفصل (صور الصفحات) */}
+            <div className="container mx-auto px-1 md:px-0 max-w-4xl pt-4 pb-16">
+                
+                {chapterData.pages.length === 0 ? (
+                    <p className="text-gray-400 text-center py-20">لا توجد صور لهذا الفصل حالياً.</p>
+                ) : (
+                    <div className="space-y-1">
+                        {chapterData.pages.map((url, index) => (
+                            <div key={index} className="relative w-full shadow-lg">
+                                {/* استخدام Image من Next.js ضروري لتحسين الأداء */}
+                                <Image 
+                                    src={url} 
+                                    alt={`صفحة ${index + 1}`} 
+                                    // يجب إضافة 'unoptimized' في حال استخدام روابط خارجية غير موثوقة
+                                    // إذا كنت تستخدم منصة مثل Cloudinary، يمكنك إزالتها
+                                    unoptimized
+                                    width={800} // قيمة افتراضية للعرض
+                                    height={1200} // قيمة افتراضية للارتفاع
+                                    className="w-full h-auto object-cover"
+                                />
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* شريط التنقل السفلي (نسخة مكررة لتسهيل التنقل بعد الانتهاء من القراءة) */}
+            <div className="fixed bottom-0 left-0 right-0">
+                <ReaderNavigationBar mangaSlug={mangaSlug} data={chapterData} />
+            </div>
+
+        </div>
+    );
+}
